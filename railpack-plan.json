@@ -44,7 +44,7 @@
   "steps": [
     {
       "assets": {
-        "mise.toml": "[tools]\n  [tools.python]\n    version = \"3.11.14\"\n"
+        "mise.toml": "[tools]\n  [tools.python]\n    version = \"3.13.9\"\n"
       },
       "commands": [
         {

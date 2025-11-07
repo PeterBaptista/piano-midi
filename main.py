@@ -5,11 +5,9 @@ import tempfile
 from flask import Flask, jsonify, send_file
 from dotenv import load_dotenv
 from musicai_sdk import MusicAiClient
-
-# ✅ --- NEW IMPORTS ---
 from basic_pitch.inference import predict
 from basic_pitch import ICASSP_2022_MODEL_PATH
-# ✅ --- END NEW IMPORTS ---
+
 
 # Load environment variables
 load_dotenv()
