@@ -22,18 +22,12 @@
         "step": "packages:mise"
       },
       {
-        "include": [
-          "/app/.venv"
-        ],
+        "include": ["/app/.venv"],
         "step": "build"
       },
       {
-        "exclude": [
-          ".venv"
-        ],
-        "include": [
-          "."
-        ],
+        "exclude": [".venv"],
+        "include": ["."],
         "step": "build"
       }
     ],
@@ -50,7 +44,7 @@
   "steps": [
     {
       "assets": {
-        "mise.toml": "[tools]\n  [tools.python]\n    version = \"3.13.9\"\n"
+        "mise.toml": "[tools]\n  [tools.python]\n    version = \"3.11.14\"\n"
       },
       "commands": [
         {
@@ -83,9 +77,7 @@
       }
     },
     {
-      "caches": [
-        "pip"
-      ],
+      "caches": ["pip"],
       "commands": [
         {
           "cmd": "python -m venv /app/.venv"
@@ -124,16 +116,12 @@
           "step": "install"
         },
         {
-          "include": [
-            "."
-          ],
+          "include": ["."],
           "local": true
         }
       ],
       "name": "build",
-      "secrets": [
-        "*"
-      ]
+      "secrets": ["*"]
     }
   ]
 }
