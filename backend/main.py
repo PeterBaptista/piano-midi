@@ -17,7 +17,7 @@ app = Flask(__name__)
 MUSICAI_API_KEY = os.getenv("MUSICAI_API_KEY")
 music_ai = MusicAiClient(api_key=MUSICAI_API_KEY)
 
-print(f"MusicAI API Key: {MUSICAI_API_KEY}")
+
 
 
 @app.route("/workflows", methods=["GET"])
@@ -48,10 +48,10 @@ def list_workflows():
 @app.route("/separate", methods=["GET"])
 def separate_music():
     try:
-        input_path = "./radiohead.m4a"
+        input_path = "./music-ai-test.m4a"
 
         if not os.path.exists(input_path):
-            return jsonify({"error": "Arquivo radiohead.m4a não encontrado"}), 404
+            return jsonify({"error": "Arquivo music-ai-test.m4a não encontrado"}), 404
 
 
         print("[INFO] Uploading file to MusicAI...")
