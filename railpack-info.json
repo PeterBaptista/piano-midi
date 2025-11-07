@@ -1,0 +1,32 @@
+{
+  "railpackVersion": "0.10.0",
+  "resolvedPackages": {
+    "python": {
+      "name": "python",
+      "requestedVersion": "3.11",
+      "resolvedVersion": "3.11.14",
+      "source": "railpack default"
+    }
+  },
+  "metadata": {
+    "providers": "python",
+    "pythonPackageManager": "pip",
+    "pythonRuntime": "flask"
+  },
+  "detectedProviders": ["python"],
+  "logs": [
+    {
+      "Level": "info",
+      "Msg": "Detected Python"
+    },
+    {
+      "Level": "info",
+      "Msg": "Using pip"
+    },
+    {
+      "Level": "info",
+      "Msg": "Found web command in Procfile"
+    }
+  ],
+  "success": true
+}
