@@ -1,65 +1,276 @@
-import Image from "next/image";
+"use client"
+
+import { useState, useEffect, useRef } from "react"
+import { parseMidiFile, type MidiData, type MidiNote } from "@/lib/midi-parser"
+import { AudioEngine } from "@/lib/audio-engine"
+import { createDefaultKeyboardMapping } from "@/lib/keyboard-mapping"
+import { useKeyboardInput } from "@/hooks/use-keyboard-input"
+import { MidiUploader } from "@/components/midi-uploader"
+import { UnifiedPianoCanvas } from "@/components/unified-piano-canvas"
+import { PlaybackControls } from "@/components/playback-controls"
+import { Music } from "lucide-react"
 
 export default function Home() {
+  const [midiData, setMidiData] = useState<MidiData | null>(null)
+  const [fileName, setFileName] = useState<string>("")
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [volume, setVolume] = useState(0.3)
+  const [speed, setSpeed] = useState(1)
+  const [activeNotes, setActiveNotes] = useState<Set<number>>(new Set())
+  const [isLoading, setIsLoading] = useState(false)
+
+  const audioEngineRef = useRef<AudioEngine>(new AudioEngine())
+  const keyboardMapping = useRef(createDefaultKeyboardMapping())
+  const playbackTimerRef = useRef<number>(0)
+  const scheduledNotesRef = useRef<Set<MidiNote>>(new Set())
+
+  useEffect(() => {
+    audioEngineRef.current.initialize()
+    return () => {
+      audioEngineRef.current.close()
+    }
+  }, [])
+
+  useEffect(() => {
+    audioEngineRef.current.setVolume(volume)
+  }, [volume])
+
+  const handleFileSelect = async (file: File) => {
+    setIsLoading(true)
+    try {
+      const data = await parseMidiFile(file)
+      setMidiData(data)
+      setFileName(file.name)
+      setCurrentTime(0)
+      setIsPlaying(false)
+    } catch (error) {
+      console.error("Error parsing MIDI file:", error)
+      alert("Failed to parse MIDI file. Please try another file.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleClear = () => {
+    setMidiData(null)
+    setFileName("")
+    setCurrentTime(0)
+    setIsPlaying(false)
+    audioEngineRef.current.stopAllNotes()
+  }
+
+  const handlePlayPause = () => {
+    if (!midiData) return
+
+    if (isPlaying) {
+      setIsPlaying(false)
+      audioEngineRef.current.stopAllNotes()
+    } else {
+      setIsPlaying(true)
+      if (currentTime >= midiData.duration) {
+        setCurrentTime(0)
+        scheduledNotesRef.current.clear()
+      }
+    }
+  }
+
+  const handleStop = () => {
+    setIsPlaying(false)
+    setCurrentTime(0)
+    scheduledNotesRef.current.clear()
+    audioEngineRef.current.stopAllNotes()
+    setActiveNotes(new Set())
+  }
+
+  const handleSeek = (time: number) => {
+    setCurrentTime(Math.max(0, Math.min(time, midiData?.duration || 0)))
+    scheduledNotesRef.current.clear()
+    audioEngineRef.current.stopAllNotes()
+    setActiveNotes(new Set())
+  }
+
+  const handleVolumeChange = (newVolume: number) => {
+    setVolume(newVolume)
+  }
+
+  const handleSpeedChange = (newSpeed: number) => {
+    setSpeed(newSpeed)
+  }
+
+  const handleKeyPress = (pitch: number) => {
+    audioEngineRef.current.playNote(pitch, 80)
+    setActiveNotes((prev) => new Set(prev).add(pitch))
+  }
+
+  const handleKeyRelease = (pitch: number) => {
+    audioEngineRef.current.stopNote(pitch)
+    setActiveNotes((prev) => {
+      const newSet = new Set(prev)
+      newSet.delete(pitch)
+      return newSet
+    })
+  }
+
+  useKeyboardInput({
+    onKeyPress: handleKeyPress,
+    onKeyRelease: handleKeyRelease,
+    keyMapping: keyboardMapping.current,
+    enabled: true,
+  })
+
+  // Playback loop
+  useEffect(() => {
+    if (!isPlaying || !midiData) {
+      if (playbackTimerRef.current) {
+        cancelAnimationFrame(playbackTimerRef.current)
+      }
+      return
+    }
+
+    let lastTime = performance.now()
+
+    const tick = () => {
+      const now = performance.now()
+      const delta = ((now - lastTime) / 1000) * speed
+      lastTime = now
+
+      setCurrentTime((prev) => {
+        const newTime = prev + delta
+
+        // Update active notes
+        const newActiveNotes = new Set<number>()
+        midiData.notes.forEach((note) => {
+          if (newTime >= note.startTime && newTime < note.startTime + note.duration) {
+            newActiveNotes.add(note.pitch)
+
+            // Play note if not already scheduled
+            if (!scheduledNotesRef.current.has(note)) {
+              scheduledNotesRef.current.add(note)
+              audioEngineRef.current.playNote(note.pitch, note.velocity, note.duration)
+            }
+          }
+        })
+        setActiveNotes(newActiveNotes)
+
+        // Clear scheduled notes that have finished
+        scheduledNotesRef.current.forEach((note) => {
+          if (newTime > note.startTime + note.duration) {
+            scheduledNotesRef.current.delete(note)
+          }
+        })
+
+        if (newTime >= midiData.duration) {
+          setIsPlaying(false)
+          return midiData.duration
+        }
+
+        return newTime
+      })
+
+      playbackTimerRef.current = requestAnimationFrame(tick)
+    }
+
+    playbackTimerRef.current = requestAnimationFrame(tick)
+
+    return () => {
+      if (playbackTimerRef.current) {
+        cancelAnimationFrame(playbackTimerRef.current)
+      }
+    }
+  }, [isPlaying, midiData, speed])
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Header */}
+      <header className="border-b border-border/40 bg-card/30 backdrop-blur-sm">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <Music className="w-6 h-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-balance">MIDI Piano Visualizer</h1>
+              <p className="text-sm text-muted-foreground">Upload a MIDI file and watch the notes fall</p>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-1 container mx-auto px-6 py-8 flex flex-col gap-6">
+        {!midiData ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="w-full max-w-2xl">
+              <MidiUploader
+                onFileSelect={handleFileSelect}
+                fileName={fileName}
+                onClear={handleClear}
+                isLoading={isLoading}
+              />
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Info Bar */}
+            <div className="flex items-center justify-between p-4 bg-card/50 rounded-lg border border-border">
+              <div className="flex items-center gap-6">
+                <div>
+                  <p className="text-sm text-muted-foreground">File</p>
+                  <p className="font-medium">{fileName}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Duration</p>
+                  <p className="font-mono">{midiData.duration.toFixed(2)}s</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Notes</p>
+                  <p className="font-mono">{midiData.notes.length}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Unified Piano Canvas */}
+            <div className="flex-1 min-h-[600px] bg-card/30 rounded-lg border border-border overflow-hidden">
+              <UnifiedPianoCanvas
+                notes={midiData.notes}
+                currentTime={currentTime}
+                duration={midiData.duration}
+                isPlaying={isPlaying}
+                activeNotes={activeNotes}
+                onKeyPress={handleKeyPress}
+                onKeyRelease={handleKeyRelease}
+              />
+            </div>
+
+            {/* Playback Controls */}
+            <PlaybackControls
+              isPlaying={isPlaying}
+              currentTime={currentTime}
+              duration={midiData.duration}
+              volume={volume}
+              speed={speed}
+              onPlayPause={handlePlayPause}
+              onStop={handleStop}
+              onSeek={handleSeek}
+              onVolumeChange={handleVolumeChange}
+              onSpeedChange={handleSpeedChange}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+          </>
+        )}
       </main>
+
+      {/* Keyboard Hints */}
+      {midiData && (
+        <div className="border-t border-border/40 bg-card/20 backdrop-blur-sm">
+          <div className="container mx-auto px-6 py-3">
+            <p className="text-xs text-muted-foreground text-center">
+              <span className="font-medium">Keyboard Controls:</span> Use Q-P, A-L, Z-M rows to play piano • Numbers 2-0
+              for black keys • Space for playback
+            </p>
+          </div>
+        </div>
+      )}
     </div>
-  );
+  )
 }
