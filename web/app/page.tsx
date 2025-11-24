@@ -19,6 +19,7 @@ export default function Home() {
   const [speed, setSpeed] = useState(1)
   const [activeNotes, setActiveNotes] = useState<Set<number>>(new Set())
   const [isLoading, setIsLoading] = useState(false)
+  const [audioReady, setAudioReady] = useState(false)
 
   const audioEngineRef = useRef<AudioEngine>(new AudioEngine())
   const keyboardMapping = useRef(createDefaultKeyboardMapping())
@@ -26,15 +27,30 @@ export default function Home() {
   const scheduledNotesRef = useRef<Set<MidiNote>>(new Set())
 
   useEffect(() => {
-    audioEngineRef.current.initialize()
+    const initAudio = () => {
+      console.log("[v0] User interaction detected, initializing audio")
+      audioEngineRef.current.initialize()
+      setAudioReady(true)
+      // Remove listeners after first initialization
+      document.removeEventListener("click", initAudio)
+      document.removeEventListener("keydown", initAudio)
+    }
+
+    document.addEventListener("click", initAudio)
+    document.addEventListener("keydown", initAudio)
+
     return () => {
+      document.removeEventListener("click", initAudio)
+      document.removeEventListener("keydown", initAudio)
       audioEngineRef.current.close()
     }
   }, [])
 
   useEffect(() => {
-    audioEngineRef.current.setVolume(volume)
-  }, [volume])
+    if (audioReady) {
+      audioEngineRef.current.setVolume(volume)
+    }
+  }, [volume, audioReady])
 
   const handleFileSelect = async (file: File) => {
     setIsLoading(true)
@@ -99,12 +115,14 @@ export default function Home() {
   }
 
   const handleKeyPress = (pitch: number) => {
-    audioEngineRef.current.playNote(pitch, 80)
+    console.log("[v0] Key press:", pitch, "Audio ready:", audioReady)
+    audioEngineRef.current.noteOn(pitch, 80)
     setActiveNotes((prev) => new Set(prev).add(pitch))
   }
 
   const handleKeyRelease = (pitch: number) => {
-    audioEngineRef.current.stopNote(pitch)
+    console.log("[v0] Key release:", pitch)
+    audioEngineRef.current.noteOff(pitch)
     setActiveNotes((prev) => {
       const newSet = new Set(prev)
       newSet.delete(pitch)
@@ -121,7 +139,7 @@ export default function Home() {
 
   // Playback loop
   useEffect(() => {
-    if (!isPlaying || !midiData) {
+    if (!isPlaying || !midiData || !audioReady) {
       if (playbackTimerRef.current) {
         cancelAnimationFrame(playbackTimerRef.current)
       }
@@ -129,6 +147,7 @@ export default function Home() {
     }
 
     let lastTime = performance.now()
+    const currentlyPlayingNotes = new Set<number>()
 
     const tick = () => {
       const now = performance.now()
@@ -138,22 +157,30 @@ export default function Home() {
       setCurrentTime((prev) => {
         const newTime = prev + delta
 
-        // Update active notes
         const newActiveNotes = new Set<number>()
+        const notesToTrigger = new Set<number>()
+
         midiData.notes.forEach((note) => {
           if (newTime >= note.startTime && newTime < note.startTime + note.duration) {
             newActiveNotes.add(note.pitch)
 
-            // Play note if not already scheduled
-            if (!scheduledNotesRef.current.has(note)) {
+            if (!currentlyPlayingNotes.has(note.pitch) && !scheduledNotesRef.current.has(note)) {
+              notesToTrigger.add(note.pitch)
               scheduledNotesRef.current.add(note)
               audioEngineRef.current.playNote(note.pitch, note.velocity, note.duration)
             }
           }
         })
+
+        currentlyPlayingNotes.forEach((pitch) => {
+          if (!newActiveNotes.has(pitch)) {
+            currentlyPlayingNotes.delete(pitch)
+          }
+        })
+        notesToTrigger.forEach((pitch) => currentlyPlayingNotes.add(pitch))
+
         setActiveNotes(newActiveNotes)
 
-        // Clear scheduled notes that have finished
         scheduledNotesRef.current.forEach((note) => {
           if (newTime > note.startTime + note.duration) {
             scheduledNotesRef.current.delete(note)
@@ -178,7 +205,7 @@ export default function Home() {
         cancelAnimationFrame(playbackTimerRef.current)
       }
     }
-  }, [isPlaying, midiData, speed])
+  }, [isPlaying, midiData, speed, audioReady])
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

@@ -31,7 +31,7 @@ export function UnifiedPianoCanvas({
   onKeyRelease,
 }: UnifiedPianoCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const animationFrameRef = useRef<number>()
+  const animationFrameRef = useRef<number>(0)
   const [mousePressed, setMousePressed] = useState(false)
   const [pressedKeys, setPressedKeys] = useState<Set<number>>(new Set())
 

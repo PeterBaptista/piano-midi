@@ -3,15 +3,33 @@ import type { MidiNote } from "./midi-parser"
 export class AudioEngine {
   private audioContext: AudioContext | null = null
   private masterGain: GainNode | null = null
-  private activeOscillators = new Map<number, OscillatorNode>()
+  private activeOscillators = new Map<
+    number,
+    { oscillator: OscillatorNode; gainNode: GainNode; filter: BiquadFilterNode }
+  >()
 
   initialize() {
     if (this.audioContext) return
 
-    this.audioContext = new AudioContext()
-    this.masterGain = this.audioContext.createGain()
-    this.masterGain.connect(this.audioContext.destination)
-    this.masterGain.gain.value = 0.3
+    console.log("[v0] Initializing AudioEngine")
+
+    try {
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      this.masterGain = this.audioContext.createGain()
+      this.masterGain.connect(this.audioContext.destination)
+      this.masterGain.gain.value = 0.3
+
+      console.log("[v0] AudioContext state:", this.audioContext.state)
+
+      // Resume context if suspended (for browser autoplay policies)
+      if (this.audioContext.state === "suspended") {
+        this.audioContext.resume().then(() => {
+          console.log("[v0] AudioContext resumed")
+        })
+      }
+    } catch (error) {
+      console.error("[v0] Failed to initialize AudioContext:", error)
+    }
   }
 
   setVolume(volume: number) {
@@ -20,8 +38,18 @@ export class AudioEngine {
     }
   }
 
-  playNote(pitch: number, velocity = 80, duration?: number) {
-    if (!this.audioContext || !this.masterGain) return
+  noteOn(pitch: number, velocity = 80) {
+    if (!this.audioContext || !this.masterGain) {
+      console.error("[v0] AudioContext not initialized")
+      return
+    }
+
+    if (this.audioContext.state === "suspended") {
+      this.audioContext.resume()
+    }
+
+    // Stop any existing note on this pitch
+    this.noteOff(pitch)
 
     const frequency = this.midiNoteToFrequency(pitch)
     const gain = (velocity / 127) * 0.3
@@ -45,45 +73,95 @@ export class AudioEngine {
     gainNode.gain.setValueAtTime(0, now)
     gainNode.gain.linearRampToValueAtTime(gain, now + 0.01)
 
-    if (duration) {
-      gainNode.gain.setValueAtTime(gain, now + duration - 0.05)
-      gainNode.gain.linearRampToValueAtTime(0, now + duration)
-      oscillator.stop(now + duration)
-    } else {
-      this.activeOscillators.set(pitch, oscillator)
-    }
-
     oscillator.start(now)
 
-    if (duration) {
-      oscillator.addEventListener("ended", () => {
-        oscillator.disconnect()
-        gainNode.disconnect()
-        filter.disconnect()
-      })
-    }
+    this.activeOscillators.set(pitch, { oscillator, gainNode, filter })
   }
 
-  stopNote(pitch: number) {
-    const oscillator = this.activeOscillators.get(pitch)
-    if (oscillator && this.audioContext) {
+  noteOff(pitch: number) {
+    const nodes = this.activeOscillators.get(pitch)
+    if (nodes && this.audioContext) {
       const now = this.audioContext.currentTime
-      const gainNode = oscillator.context.createGain()
+      const currentGain = nodes.gainNode.gain.value
+
+      // Smooth release envelope
+      nodes.gainNode.gain.cancelScheduledValues(now)
+      nodes.gainNode.gain.setValueAtTime(currentGain, now)
+      nodes.gainNode.gain.linearRampToValueAtTime(0, now + 0.05)
 
       try {
-        oscillator.stop(now + 0.05)
+        nodes.oscillator.stop(now + 0.05)
       } catch (e) {
         // Note already stopped
       }
+
+      // Clean up after stop
+      setTimeout(() => {
+        nodes.oscillator.disconnect()
+        nodes.gainNode.disconnect()
+        nodes.filter.disconnect()
+      }, 100)
 
       this.activeOscillators.delete(pitch)
     }
   }
 
+  playNote(pitch: number, velocity = 80, duration?: number) {
+    if (!this.audioContext || !this.masterGain) {
+      console.error("[v0] AudioContext not initialized")
+      return
+    }
+
+    if (this.audioContext.state === "suspended") {
+      this.audioContext.resume()
+    }
+
+    if (duration) {
+      const frequency = this.midiNoteToFrequency(pitch)
+      const gain = (velocity / 127) * 0.3
+
+      const oscillator = this.audioContext.createOscillator()
+      const gainNode = this.audioContext.createGain()
+      const filter = this.audioContext.createBiquadFilter()
+
+      oscillator.type = "sine"
+      oscillator.frequency.value = frequency
+
+      filter.type = "lowpass"
+      filter.frequency.value = frequency * 4
+      filter.Q.value = 1
+
+      oscillator.connect(filter)
+      filter.connect(gainNode)
+      gainNode.connect(this.masterGain)
+
+      const now = this.audioContext.currentTime
+      gainNode.gain.setValueAtTime(0, now)
+      gainNode.gain.linearRampToValueAtTime(gain, now + 0.01)
+      gainNode.gain.setValueAtTime(gain, now + duration - 0.05)
+      gainNode.gain.linearRampToValueAtTime(0, now + duration)
+
+      oscillator.start(now)
+      oscillator.stop(now + duration)
+
+      oscillator.addEventListener("ended", () => {
+        oscillator.disconnect()
+        gainNode.disconnect()
+        filter.disconnect()
+      })
+    } else {
+      this.noteOn(pitch, velocity)
+    }
+  }
+
+  stopNote(pitch: number) {
+    this.noteOff(pitch)
+  }
+
   stopAllNotes() {
-    this.activeOscillators.forEach((oscillator) => {
+    this.activeOscillators.forEach((nodes) => {
       try {
-        oscillator.stop()
+        nodes.oscillator.stop()
       } catch (e) {
         // Already stopped
       }
