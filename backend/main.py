@@ -9,7 +9,6 @@ from basic_pitch.inference import predict
 from basic_pitch import ICASSP_2022_MODEL_PATH
 import pretty_midi
 
-
 # ------------------------
 # Setup and configuration
 # ------------------------
@@ -21,227 +20,197 @@ MUSICAI_WORKFLOW_TITLE = os.getenv("MUSICAI_WORKFLOW_TITLE")
 MUSICAI_WORKFLOW_SLUG = os.getenv("MUSICAI_WORKFLOW_SLUG")
 music_ai = MusicAiClient(api_key=MUSICAI_API_KEY)
 
-# --- NOVO ---
-# Limite em segundos para fundir notas.
-# Se o intervalo entre notas for menor ou igual a este, elas serão fundidas.
-# Este é o "quão rápido é a repetição" que você mencionou.
-MERGE_NOTE_GAP_SECONDS = 0.08
-
-
 # ------------------------
 # Utility functions
 # ------------------------
 
-# --- NOVO ---
-def merge_repeated_notes(notes: list, max_gap: float) -> list:
+def filter_piano_stem(result_files: dict) -> dict:
     """
-    Funde notas consecutivas do mesmo tom se o intervalo entre elas
-    for menor ou igual a max_gap.
+    Tenta identificar o arquivo que contém o piano.
+    Prioridade: 'piano' > 'other' > 'accompaniment'
+    Se não achar, retorna o primeiro disponível.
     """
-    if not notes:
-        return []
-
+    # Normaliza chaves para minúsculas para busca
+    keys = {k.lower(): k for k in result_files.keys()}
     
-
-    # Garante que as notas estejam ordenadas pelo tempo de início
-    notes.sort(key=lambda n: n.start)
-
-    merged_notes = []
-    # Começa com a primeira nota como a base para a fusão
-    current_merged_note = notes[0]
-
-    for next_note in notes[1:]:
-        # 1. Verifica se é o mesmo tom
-        is_same_pitch = (next_note.pitch == current_merged_note.pitch)
+    if 'piano' in keys:
+        target_key = keys['piano']
+        print(f"[INFO] Stem de Piano explícito encontrado: {target_key}")
+        return {target_key: result_files[target_key]}
+    
+    if 'other' in keys:
+        target_key = keys['other']
+        print(f"[INFO] Stem de Piano provável encontrado em 'other': {target_key}")
+        return {target_key: result_files[target_key]}
         
-        # 2. Verifica se o intervalo é pequeno (ou se há sobreposição)
-        # O intervalo é o início da próxima nota menos o fim da nota atual
-        gap = next_note.start - current_merged_note.end
-        is_close_gap = (gap <= max_gap)
+    print("[WARN] Stem de piano específico não encontrado. Processando todos.")
+    return result_files
 
-        if is_same_pitch and is_close_gap:
-            # Fundir: estende o tempo de término da nota atual
-            # Usamos max() caso as notas se sobreponham
-            current_merged_note.end = max(current_merged_note.end, next_note.end)
-            # Opcional: ajustar a velocidade (ex: pegar a mais alta)
-            current_merged_note.velocity = max(current_merged_note.velocity, next_note.velocity)
-        else:
-            # Não fundir: finaliza a nota atual
-            merged_notes.append(current_merged_note)
-            # A próxima nota se torna a nova base para fusão
-            current_merged_note = next_note
-
-    # Adiciona a última nota processada
-    merged_notes.append(current_merged_note)
-
-    return merged_notes
-
-
-# --- MODIFICADO ---
 def generate_midi_from_audio(stem_path: str, output_dir: str) -> str:
     """
-    Gera um arquivo MIDI normalizado a partir de um stem de áudio.
-    Esta versão funde notas rápidas repetidas.
-    Retorna o caminho para o arquivo MIDI salvo.
+    Gera MIDI otimizado para PIANO CLÁSSICO.
     """
     midi_file_name = os.path.splitext(os.path.basename(stem_path))[0] + '.mid'
     midi_output_path = os.path.join(output_dir, midi_file_name)
 
     print(f"[DEBUG] Gerando MIDI para: {stem_path}")
     try:
-        model_output, midi_data, note_events = predict(stem_path, ICASSP_2022_MODEL_PATH)
+        # PARÂMETROS OTIMIZADOS PARA PIANO:
+        # onset_threshold=0.6: Mais rigoroso com o início das notas para evitar "fantasmas"
+        # frame_threshold=0.3: Permite sustentação natural
+        # minimum_note_length=50: (ms) Ignora ruídos muito curtos, mas permite notas rápidas (staccato)
+        # minimum_frequency=27.5: Nota A0 (limite grave do piano)
+        # maximum_frequency=4186.0: Nota C8 (limite agudo do piano)
+        model_output, midi_data, note_events = predict(
+            stem_path, 
+            ICASSP_2022_MODEL_PATH,
+            onset_threshold=0.6, 
+            frame_threshold=0.3,
+            minimum_note_length=50,
+            minimum_frequency=27.5,
+            maximum_frequency=4186.0
+        )
 
-        # Converte para PrettyMIDI
-        midi_buffer = io.BytesIO()
-        midi_data.write(midi_buffer)
-        midi_buffer.seek(0)
-        pm = pretty_midi.PrettyMIDI(midi_buffer)
+        # PÓS-PROCESSAMENTO PARA PIANO
+        # 1. Definir instrumento correto
+        piano_program = pretty_midi.instrument_name_to_program('Acoustic Grand Piano')
+        
+        # Como o basic_pitch pode gerar múltiplos instrumentos "estimados", 
+        # vamos consolidar ou forçar todos para Piano.
+        for instrument in midi_data.instruments:
+            instrument.program = piano_program
+            instrument.is_drum = False
+            
+            # 2. REMOVER PITCH BENDS (Crítico para Piano)
+            # Pianos não fazem bend. Bends geram som de "piano desafinado".
+            instrument.pitch_bends = []
 
-        # Constantes de normalização
-        uniform_velocity = 80
-        uniform_instrument = 0  # Acoustic Grand Piano
+            # 3. MANTER VELOCITY (Dinâmica)
+            # Removemos sua linha que forçava velocity=80. 
+            # O `predict` já extrai a força da nota (velocity), o que é vital para música clássica.
 
-        for instrument in pm.instruments:
-            # --- NOVO: Funde notas repetidas ---
-            # Substitui a lista de notas do instrumento pela nova lista processada
-            if instrument.notes:
-                print(f"[DEBUG] Fundindo {len(instrument.notes)} notas para {os.path.basename(stem_path)}...")
-                instrument.notes = merge_repeated_notes(instrument.notes, MERGE_NOTE_GAP_SECONDS)
-                print(f"[DEBUG] Notas após fusão: {len(instrument.notes)}")
-            # --- FIM NOVO ---
-
-            # Lógica de normalização original (agora aplicada às notas já fundidas)
-            instrument.program = uniform_instrument
-            for note in instrument.notes:
-                note.velocity = uniform_velocity
-
-        pm.write(midi_output_path)
-        print(f"[DEBUG] MIDI fundido e salvo em: {midi_output_path}")
+        midi_data.write(midi_output_path)
+        print(f"[DEBUG] MIDI salvo em: {midi_output_path}")
         return midi_output_path
 
     except Exception as e:
-        print(f"[WARN] Não foi possível gerar MIDI para {stem_path}: {e}")
+        print(f"[WARN] Erro ao gerar MIDI para {stem_path}: {e}")
         return None
 
 
 def create_zip_with_midi(result_files: dict) -> io.BytesIO:
-    """
-    Dado um dict de arquivos de resultado do MusicAI, gera arquivos MIDI,
-    zipa todos os arquivos (stems + MIDI) e retorna um buffer BytesIO pronto para download.
-    """
     with tempfile.TemporaryDirectory() as output_dir:
-        # Download files locally
-        print("[INFO] Baixando arquivos de resultado do job...")
-        local_files = music_ai.download_job_results(result_files, output_dir)
-        print(f"[INFO] Baixado: {local_files}")
-
-        # Generate MIDI files
-        print("[INFO] Gerando arquivos MIDI...")
+        
+        # 1. Filtra apenas o piano para economizar tempo e focar na qualidade
+        piano_files_map = filter_piano_stem(result_files)
+        
+        print("[INFO] Baixando stem de piano...")
+        local_files = music_ai.download_job_results(piano_files_map, output_dir)
+        
+        print("[INFO] Gerando MIDI de alta precisão...")
+        generated_midis = []
         for stem_path in local_files.values():
-            generate_midi_from_audio(stem_path, output_dir) # Esta função agora funde as notas
+            midi_path = generate_midi_from_audio(stem_path, output_dir)
+            if midi_path:
+                generated_midis.append(midi_path)
 
-        # Create in-memory ZIP
-        print("[INFO] Zipando todos os arquivos (stems + MIDI)...")
+        # Create ZIP
+        print("[INFO] Zipando resultados...")
         memory_zip = io.BytesIO()
         with zipfile.ZipFile(memory_zip, "w", zipfile.ZIP_DEFLATED) as zipf:
+            # Adiciona os arquivos de áudio baixados
             for file_name in os.listdir(output_dir):
                 full_path = os.path.join(output_dir, file_name)
+                # Opcional: Se quiser entregar APENAS o MIDI, filtre aqui.
+                # Atualmente inclui o áudio do piano + o MIDI.
                 zipf.write(full_path, arcname=file_name)
-                print(f"[DEBUG] Adicionado ao ZIP: {file_name}")
+                
         memory_zip.seek(0)
-
         return memory_zip
 
-
-
 # ------------------------
-# Routes
+# Routes (Mantidas iguais, lógica interna alterada)
 # ------------------------
 
 @app.route("/workflows", methods=["GET"])
 def list_workflows():
-    """Return all available MusicAI workflows."""
     try:
         workflows = music_ai.list_workflows()
         if isinstance(workflows, dict) and "data" in workflows:
             workflows = workflows["data"]
-
         formatted = [{"slug": w.get("slug"), "name": w.get("name")} for w in workflows]
         return jsonify({"workflows": formatted})
     except Exception as e:
-        print("[ERROR] Could not list workflows:", e)
         return jsonify({"error": str(e)}), 500
 
+@app.route("/download/<job_id>", methods=["GET"])
+def download_existing_job(job_id):
+    """
+    Baixa e processa um job existente do MusicAI pelo ID.
+    Aplica a lógica de separação de piano clássico (sem pitch bends, alta precisão).
+    """
+    try:
+        print(f"[INFO] Buscando status do job {job_id}...")
+        job_result = music_ai.get_job(job_id)
 
+        # Verifica se o job já terminou
+        if job_result.get("status") != "SUCCEEDED":
+            return jsonify({
+                "error": f"Job {job_id} não está concluído ou falhou.",
+                "status": job_result.get("status"),
+                "details": job_result
+            }), 400
+
+        print("[INFO] Job válido. Iniciando processamento de MIDI para Piano...")
+        
+        # A função create_zip_with_midi agora já contém:
+        # 1. O filtro inteligente para pegar apenas o stem de piano
+        # 2. A geração de MIDI com onset_threshold=0.6 e sem pitch bends
+        memory_zip = create_zip_with_midi(job_result)
+
+        return send_file(
+            memory_zip,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=f"piano_classic_midi_{job_id}.zip"
+        )
+
+    except Exception as e:
+        print(f"[ERROR] Erro no download do job {job_id}: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/separate", methods=["GET"])
 def separate_music():
-    """Upload a local test file to MusicAI, separate stems, and return ZIP with stems + MIDI."""
     try:
-        input_path = "./music-ai-test.m4a"
+        input_path = "./odeon.m4a" # Certifique-se que este arquivo existe ou receba via upload
         if not os.path.exists(input_path):
-            return jsonify({"error": "Arquivo music-ai-test.m4a não encontrado"}), 404
+            return jsonify({"error": "Arquivo local não encontrado"}), 404
 
-        print("[INFO] Enviando arquivo para MusicAI...")
+        print("[INFO] Uploading...")
         song_url = music_ai.upload_file(input_path)
 
-        print("[INFO] Criando job de separação...")
+        print("[INFO] Job start...")
         job = music_ai.add_job(MUSICAI_WORKFLOW_TITLE, MUSICAI_WORKFLOW_SLUG, {"inputUrl": song_url})
         job_id = job["id"]
 
-        print(f"[INFO] Aguardando job {job_id} completar...")
+        print(f"[INFO] Waiting job {job_id}...")
         job_result = music_ai.wait_for_job_completion(job_id)
 
         if job_result["status"] != "SUCCEEDED":
             return jsonify({"error": "MusicAI job failed", "details": job_result}), 500
 
-        print("[INFO] Criando ZIP com stems e MIDI...")
-        memory_zip = create_zip_with_midi(job_result) # Esta função agora chama a lógica de fusão
+        memory_zip = create_zip_with_midi(job_result)
 
         return send_file(
             memory_zip,
             mimetype="application/zip",
             as_attachment=True,
-            download_name=f"stems_and_midi_{job_id}.zip"
+            download_name=f"piano_midi_{job_id}.zip"
         )
 
     except Exception as e:
-        print("[ERROR]", e)
+        print(e)
         return jsonify({"error": str(e)}), 500
 
-
-
-@app.route("/download/<job_id>", methods=["GET"])
-def download_existing_job(job_id):
-    """Download and process an existing MusicAI job by ID."""
-    try:
-        print(f"[INFO] Buscando resultados do job {job_id}...")
-        job_result = music_ai.get_job(job_id)
-
-        if job_result["status"] != "SUCCEEDED":
-            return jsonify({
-                "error": f"Job {job_id} não completou com sucesso",
-                "status": job_result["status"]
-            }), 400
-
-        print("[INFO] Baixando resultados do job e criando ZIP...")
-        memory_zip = create_zip_with_midi(job_result) # Esta função agora chama a lógica de fusão
-
-        return send_file(
-            memory_zip,
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=f"stems_and_midi_{job_id}.zip"
-        )
-
-    except Exception as e:
-        print("[ERROR]", e)
-        return jsonify({"error": str(e)}), 500
-
-
-
-# ------------------------
-# Run server
-# ------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
