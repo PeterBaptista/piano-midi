@@ -17,6 +17,8 @@ load_dotenv()
 app = Flask(__name__)
 
 MUSICAI_API_KEY = os.getenv("MUSICAI_API_KEY")
+MUSICAI_WORKFLOW_TITLE = os.getenv("MUSICAI_WORKFLOW_TITLE")
+MUSICAI_WORKFLOW_SLUG = os.getenv("MUSICAI_WORKFLOW_SLUG")
 music_ai = MusicAiClient(api_key=MUSICAI_API_KEY)
 
 # --- NOVO ---
@@ -184,7 +186,7 @@ def separate_music():
         song_url = music_ai.upload_file(input_path)
 
         print("[INFO] Criando job de separação...")
-        job = music_ai.add_job("All stems", "teste-pedro", {"inputUrl": song_url})
+        job = music_ai.add_job(MUSICAI_WORKFLOW_TITLE, MUSICAI_WORKFLOW_SLUG, {"inputUrl": song_url})
         job_id = job["id"]
 
         print(f"[INFO] Aguardando job {job_id} completar...")
