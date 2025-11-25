@@ -15,7 +15,7 @@ interface PianoRollProps {
 
 const PIANO_KEYS = 88 // A0 to C8
 const LOWEST_KEY = 21 // A0 MIDI number
-const WHITE_KEY_WIDTH2 = 20
+const WHITE_KEY_WIDTH = 20
 const PIXELS_PER_SECOND = 150
 const VISIBLE_DURATION = 5 // seconds
 
