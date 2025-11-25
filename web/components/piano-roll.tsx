@@ -22,7 +22,7 @@ const VISIBLE_DURATION = 5 // seconds
 export function PianoRoll({ notes, currentTime, duration, isPlaying, onNoteHover }: PianoRollProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [hoveredNote, setHoveredNote] = useState<MidiNote | null>(null)
-  const animationFrameRef = useRef<number>()
+  const animationFrameRef = useRef<number>(0)
 
   useEffect(() => {
     const canvas = canvasRef.current
