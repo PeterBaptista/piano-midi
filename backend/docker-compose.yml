@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persist the SQLite database file
+      - ./music_app.db:/app/music_app.db
+    environment:
+      - MUSICAI_API_KEY=${MUSICAI_API_KEY}
+      - MUSICAI_WORKFLOW_TITLE=${MUSICAI_WORKFLOW_TITLE}
+      - MUSICAI_WORKFLOW_SLUG=${MUSICAI_WORKFLOW_SLUG}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
