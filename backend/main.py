@@ -31,11 +31,6 @@ app.config['JWT_SECRET_KEY'] = os.getenv("JWT_SECRET_KEY", "chavesecreta")
 db.init_app(app)
 jwt = JWTManager(app)
 
-@jwt.invalid_token_loader
-def invalid_token_callback(error):
-    print(f"ERRO DE TOKEN DETECTADO: {error}")  # <--- Isso vai aparecer no seu terminal
-    return jsonify({"message": f"Token inválido: {error}"}), 422
-
 bcrypt = Bcrypt(app)
 
 with app.app_context():
