@@ -1,5 +1,5 @@
-# Use Python 3.10 slim to keep the base image lighter while ensuring compatibility
-FROM python:3.10-slim
+
+FROM python:3.11
 
 # Set environment variables
 # Prevents Python from writing pyc files
