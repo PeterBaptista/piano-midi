@@ -21,6 +21,10 @@ import {
   calculateHitRating,
   calculateNoteScore,
 } from "@/lib/midi-utils"
+import { useAuth } from "@/app/context/auth-context" 
+import { AuthModal } from "@/components/auth-modal"
+import { Button } from "@/components/ui/button"
+import { LogOut, User as UserIcon } from "lucide-react"
 
 export function MidiPlayer() {
   const [midiData, setMidiData] = useState<ParsedMidi | null>(null)
@@ -51,6 +55,9 @@ export function MidiPlayer() {
   const lastTimeRef = useRef<number>(0)
   const scheduledNotesRef = useRef<Set<string>>(new Set())
   const currentTimeRef = useRef(0)
+
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
+  const { user, logout, isAuthenticated } = useAuth()
 
   // Keep currentTimeRef in sync
   useEffect(() => {
@@ -411,17 +418,41 @@ export function MidiPlayer() {
       <div className="w-full h-screen bg-slate-950 flex flex-col">
         <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
           <h1 className="text-lg font-semibold text-white">MIDI Piano Roll</h1>
-          <MidiDevicePanel
-            isSupported={midiSupported}
-            hasPermission={midiPermission}
-            devices={midiDevices}
-            selectedDeviceId={selectedDeviceId}
-            isConnecting={midiConnecting}
-            error={midiError}
-            onRequestAccess={requestMidiAccess}
-            onSelectDevice={setSelectedDeviceId}
-            lastNote={midiLastNote}
-          />
+          
+          <div className="flex items-center gap-3">
+              <MidiDevicePanel
+                isSupported={midiSupported}
+                hasPermission={midiPermission}
+                devices={midiDevices}
+                selectedDeviceId={selectedDeviceId}
+                isConnecting={midiConnecting}
+                error={midiError}
+                onRequestAccess={requestMidiAccess}
+                onSelectDevice={setSelectedDeviceId}
+                lastNote={midiLastNote}
+              />
+
+              {isAuthenticated ? (
+                <div className="flex items-center gap-3 ml-4 border-l border-slate-700 pl-4">
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <UserIcon className="w-4 h-4" />
+                    <span className="text-sm font-medium">{user?.username}</span>
+                  </div>
+                  <Button variant="ghost" size="icon-sm" onClick={logout} title="Sair">
+                    <LogOut className="w-4 h-4 text-slate-400 hover:text-red-400" />
+                  </Button>
+                </div>
+              ) : (
+                <Button 
+                  onClick={() => setIsAuthModalOpen(true)}
+                  size="sm" 
+                  className="bg-blue-600 hover:bg-blue-500 text-white ml-2"
+                >
+                  Login
+                </Button>
+              )}
+          </div>
+
         </div>
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="w-full max-w-2xl">
@@ -434,6 +465,8 @@ export function MidiPlayer() {
             )}
           </div>
         </div>
+        
+        <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
       </div>
     )
   }
@@ -455,6 +488,19 @@ export function MidiPlayer() {
             lastNote={midiLastNote}
           />
           <ModeSelector mode={mode} onModeChange={handleModeChange} disabled={isPlaying} />
+
+          {isAuthenticated ? (
+            <div className="flex items-center gap-2 ml-2" title={`Logado como: ${user?.username}`}>
+                <div className="w-8 h-8 rounded-full bg-blue-900/50 flex items-center justify-center text-blue-200 text-xs font-bold border border-blue-800 cursor-default">
+                  {user?.username.substring(0,2).toUpperCase()}
+                </div>
+            </div>
+          ) : (
+            <Button onClick={() => setIsAuthModalOpen(true)} size="sm" variant="secondary">
+              Login
+            </Button>
+          )}
+
         </div>
       </div>
 
@@ -504,6 +550,8 @@ export function MidiPlayer() {
             : `Press keys when notes hit the yellow line! ${midiPermission && midiDevices.length > 0 ? "MIDI device connected." : ""}`}
         </p>
       </div>
+
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
     </div>
   )
 }

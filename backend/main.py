@@ -2,23 +2,105 @@ import os
 import zipfile
 import io
 import tempfile
-from flask import Flask, jsonify, send_file
+from flask import Flask, jsonify, send_file, request
+from flask_cors import CORS
 from dotenv import load_dotenv
+
 from musicai_sdk import MusicAiClient
 from basic_pitch.inference import predict
 from basic_pitch import ICASSP_2022_MODEL_PATH
 import pretty_midi
+
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+from flask_bcrypt import Bcrypt
+from models import db, User
 
 # ------------------------
 # Setup and configuration
 # ------------------------
 load_dotenv()
 app = Flask(__name__)
+CORS(app)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///music_app.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['JWT_SECRET_KEY'] = os.getenv("JWT_SECRET_KEY", "chavesecreta")
+
+db.init_app(app)
+jwt = JWTManager(app)
+bcrypt = Bcrypt(app)
+
+with app.app_context():
+    db.create_all()
 
 MUSICAI_API_KEY = os.getenv("MUSICAI_API_KEY")
 MUSICAI_WORKFLOW_TITLE = os.getenv("MUSICAI_WORKFLOW_TITLE")
 MUSICAI_WORKFLOW_SLUG = os.getenv("MUSICAI_WORKFLOW_SLUG")
 music_ai = MusicAiClient(api_key=MUSICAI_API_KEY)
+
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    
+    if not data or not data.get('username') or not data.get('password') or not data.get('email'):
+        return jsonify({"msg": "Dados incompletos"}), 400
+
+    # Verifica se usuário já existe
+    if User.query.filter_by(username=data['username']).first():
+        return jsonify({"msg": "Usuário já existe"}), 400
+    
+    if User.query.filter_by(email=data['email']).first():
+        return jsonify({"msg": "Email já cadastrado"}), 400
+
+    # Criptografa a senha
+    hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+
+    # Cria novo usuário
+    new_user = User(
+        username=data['username'],
+        email=data['email'],
+        password_hash=hashed_password
+    )
+
+    try:
+        db.session.add(new_user)
+        db.session.commit()
+        return jsonify({"msg": "Usuário criado com sucesso!"}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+
+    if not data or not data.get('username') or not data.get('password'):
+        return jsonify({"msg": "Dados incompletos"}), 400
+
+    user = User.query.filter_by(username=data['username']).first()
+
+    # Verifica se usuário existe E se a senha bate
+    if user and bcrypt.check_password_hash(user.password_hash, data['password']):
+        access_token = create_access_token(identity=user.id)
+        return jsonify({
+            "msg": "Login realizado com sucesso",
+            "access_token": access_token,
+            "user": {"username": user.username, "email": user.email}
+        }), 200
+    
+    return jsonify({"msg": "Usuário ou senha inválidos"}), 401
+
+@app.route('/meus-dados', methods=['GET'])
+@jwt_required()
+def get_user_data():
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    return jsonify({
+        "id": user.id,
+        "username": user.username,
+        "email": user.email
+    }), 200
 
 # ------------------------
 # Utility functions
