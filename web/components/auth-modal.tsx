@@ -9,6 +9,7 @@ interface AuthModalProps {
   isOpen: boolean
   onClose: () => void
 }
+const API_URL = process.env.NEXT_PUBLIC_API_URL!
 
 export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [isLoginView, setIsLoginView] = useState(true)
@@ -30,7 +31,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     setError("")
 
     const endpoint = isLoginView ? "/login" : "/register"
-    const url = `http://127.0.0.1:5000${endpoint}`
+    const url = `${API_URL}${endpoint}`
 
     const body = isLoginView 
       ? { username, password }

@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Youtube, Loader2, Download, AlertCircle } from "lucide-react"
 import { useAuth } from "@/app/context/auth-context"
-
+const API_URL = process.env.NEXT_PUBLIC_API_URL!
 interface YouTubeModalProps {
   isOpen: boolean
   onClose: () => void
@@ -31,7 +31,7 @@ export function YouTubeModal({ isOpen, onClose }: YouTubeModalProps) {
     setStatusMessage("Baixando áudio e iniciando separação...")
 
     try {
-      const res = await fetch("http://127.0.0.1:5000/process-youtube", {
+      const res = await fetch(`${API_URL}/process-youtube`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -58,7 +58,7 @@ export function YouTubeModal({ isOpen, onClose }: YouTubeModalProps) {
   const pollStatus = async (id: string) => {
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:5000/jobs/${id}?download=false`, {
+        const res = await fetch(`${API_URL}/jobs/${id}?download=false`, {
           headers: { "Authorization": `Bearer ${token}` }
         })
         const data = await res.json()
@@ -91,7 +91,7 @@ export function YouTubeModal({ isOpen, onClose }: YouTubeModalProps) {
   const handleDownloadBlob = async (id: string) => {
       setStatusMessage("Baixando arquivo...")
       try {
-        const res = await fetch(`http://127.0.0.1:5000/jobs/${id}`, {
+        const res = await fetch(`${API_URL}/jobs/${id}`, {
             headers: { "Authorization": `Bearer ${token}` }
         })
         const blob = await res.blob()
