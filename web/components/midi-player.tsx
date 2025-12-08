@@ -24,7 +24,8 @@ import {
 import { useAuth } from "@/app/context/auth-context" 
 import { AuthModal } from "@/components/auth-modal"
 import { Button } from "@/components/ui/button"
-import { LogOut, User as UserIcon } from "lucide-react"
+import { LogOut, User as UserIcon, Youtube } from "lucide-react"
+import { YouTubeModal } from "@/components/youtube-modal"
 
 export function MidiPlayer() {
   const [midiData, setMidiData] = useState<ParsedMidi | null>(null)
@@ -50,16 +51,16 @@ export function MidiPlayer() {
   const [recentHits, setRecentHits] = useState<NoteHit[]>([])
   const [pendingNotes, setPendingNotes] = useState<Map<string, MidiNote & { index: number }>>(new Map())
 
-  const synthRef = useRef<Tone.PolySynth | null>(null)
+  const synthRef = useRef<Tone.PolySynth | Tone.Sampler | null>(null)
   const animationRef = useRef<number>(0)
   const lastTimeRef = useRef<number>(0)
   const scheduledNotesRef = useRef<Set<string>>(new Set())
   const currentTimeRef = useRef(0)
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
+  const [isYoutubeModalOpen, setIsYoutubeModalOpen] = useState(false)
   const { user, logout, isAuthenticated } = useAuth()
 
-  // Keep currentTimeRef in sync
   useEffect(() => {
     currentTimeRef.current = currentTime
   }, [currentTime])
@@ -158,31 +159,57 @@ export function MidiPlayer() {
     onNoteOff: handleMidiNoteOff,
   })
 
-  // Initialize synth
   useEffect(() => {
-    synthRef.current = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: "triangle" },
-      envelope: {
-        attack: 0.02,
-        decay: 0.1,
-        sustain: 0.3,
-        release: 0.8,
+    const sampler = new Tone.Sampler({
+      urls: {
+        A0: "A0.mp3",
+        C1: "C1.mp3",
+        "D#1": "Ds1.mp3",
+        "F#1": "Fs1.mp3",
+        A1: "A1.mp3",
+        C2: "C2.mp3",
+        "D#2": "Ds2.mp3",
+        "F#2": "Fs2.mp3",
+        A2: "A2.mp3",
+        C3: "C3.mp3",
+        "D#3": "Ds3.mp3",
+        "F#3": "Fs3.mp3",
+        A3: "A3.mp3",
+        C4: "C4.mp3",
+        "D#4": "Ds4.mp3",
+        "F#4": "Fs4.mp3",
+        A4: "A4.mp3",
+        C5: "C5.mp3",
+        "D#5": "Ds5.mp3",
+        "F#5": "Fs5.mp3",
+        A5: "A5.mp3",
+        C6: "C6.mp3",
+        "D#6": "Ds6.mp3",
+        "F#6": "Fs6.mp3",
+        A6: "A6.mp3",
+        C7: "C7.mp3",
+        "D#7": "Ds7.mp3",
+        "F#7": "Fs7.mp3",
+        A7: "A7.mp3",
+        C8: "C8.mp3"
       },
+      release: 1,
+      baseUrl: "https://tonejs.github.io/audio/salamander/"
     }).toDestination()
 
+    synthRef.current = sampler
+
     return () => {
-      synthRef.current?.dispose()
+      sampler.dispose()
     }
   }, [])
 
-  // Update volume
   useEffect(() => {
     if (synthRef.current) {
       synthRef.current.volume.value = Tone.gainToDb(volume)
     }
   }, [volume])
 
-  // Parse MIDI file
   const handleFileLoad = useCallback(async (file: File) => {
     const arrayBuffer = await file.arrayBuffer()
     const midi = new Midi(arrayBuffer)
@@ -242,7 +269,6 @@ export function MidiPlayer() {
     setPendingNotes(new Map())
   }, [])
 
-  // Playback loop
   useEffect(() => {
     if (!isPlaying || !midiData) return
 
@@ -454,9 +480,22 @@ export function MidiPlayer() {
           </div>
 
         </div>
-        <div className="flex-1 flex items-center justify-center p-8">
+        <div className="flex-1 flex flex-col items-center justify-center p-8">
           <div className="w-full max-w-2xl">
             <MidiDropzone onFileLoad={handleFileLoad} />
+            
+            <div className="mt-6 flex flex-col items-center gap-2">
+               <p className="text-slate-500 text-sm">Ou importe uma música diretamente</p>
+               <Button 
+                  variant="outline" 
+                  className="gap-2 border-red-900/50 text-red-400 hover:bg-red-950/50 hover:text-red-300"
+                  onClick={() => setIsYoutubeModalOpen(true)}
+               >
+                  <Youtube className="w-4 h-4" />
+                  Separar Piano via YouTube (IA)
+               </Button>
+            </div>
+
             {midiPermission && midiDevices.length > 0 && (
               <p className="text-center text-sm text-green-400 mt-4">
                 MIDI device connected: {midiDevices.find((d) => d.id === selectedDeviceId)?.name || "None selected"}
@@ -467,6 +506,7 @@ export function MidiPlayer() {
         </div>
         
         <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+        <YouTubeModal isOpen={isYoutubeModalOpen} onClose={() => setIsYoutubeModalOpen(false)} />
       </div>
     )
   }
