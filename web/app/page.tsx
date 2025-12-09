@@ -9,8 +9,10 @@ import { MidiUploader } from "@/components/midi-uploader"
 import { UnifiedPianoCanvas } from "@/components/unified-piano-canvas"
 import { PlaybackControls } from "@/components/playback-controls"
 import { Music } from "lucide-react"
+import { useRouter } from 'next/navigation'
 
 export default function Home() {
+  const router = useRouter();
   const [midiData, setMidiData] = useState<MidiData | null>(null)
   const [fileName, setFileName] = useState<string>("")
   const [isPlaying, setIsPlaying] = useState(false)
@@ -25,6 +27,15 @@ export default function Home() {
   const keyboardMapping = useRef(createDefaultKeyboardMapping())
   const playbackTimerRef = useRef<number>(0)
   const scheduledNotesRef = useRef<Set<MidiNote>>(new Set())
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const logado = localStorage.getItem("logado");
+      if (logado !== "true") {
+        router.replace("/login");
+      }
+    }
+  }, [router]);
 
   useEffect(() => {
     const initAudio = () => {

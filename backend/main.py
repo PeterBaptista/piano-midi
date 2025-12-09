@@ -2,7 +2,8 @@ import os
 import zipfile
 import io
 import tempfile
-from flask import Flask, jsonify, send_file
+from flask import Flask, jsonify, send_file, request
+from flask_cors import CORS
 from dotenv import load_dotenv
 from musicai_sdk import MusicAiClient
 from basic_pitch.inference import predict
@@ -14,6 +15,7 @@ import pretty_midi
 # ------------------------
 load_dotenv()
 app = Flask(__name__)
+CORS(app)
 
 MUSICAI_API_KEY = os.getenv("MUSICAI_API_KEY")
 MUSICAI_WORKFLOW_TITLE = os.getenv("MUSICAI_WORKFLOW_TITLE")
@@ -211,6 +213,20 @@ def separate_music():
     except Exception as e:
         print(e)
         return jsonify({"error": str(e)}), 500
+    
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.get_json()
+    login = data.get("login")
+    senha = data.get("senha")
+    return jsonify({"success": True, "error": ""})
+
+@app.route("/cadastro", methods=["POST"])
+def cadastro():
+    data = request.get_json()
+    login = data.get("login")
+    senha = data.get("senha")
+    return jsonify({"success": True, "error": ""})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
