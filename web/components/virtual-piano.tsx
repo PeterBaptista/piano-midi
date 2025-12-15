@@ -7,6 +7,7 @@ import type { JSX } from "react" // Import JSX to fix the undeclared variable er
 
 interface VirtualPianoProps {
   activeNotes: Set<number>
+  userPressedKeys?: Set<number>
   onKeyPress: (pitch: number) => void
   onKeyRelease: (pitch: number) => void
   keyboardMapping: Map<string, number>
@@ -15,7 +16,7 @@ interface VirtualPianoProps {
 const PIANO_KEYS = 88
 const LOWEST_KEY = 21 // A0
 
-export function VirtualPiano({ activeNotes, onKeyPress, onKeyRelease, keyboardMapping }: VirtualPianoProps) {
+export function VirtualPiano({ activeNotes, userPressedKeys = new Set(), onKeyPress, onKeyRelease, keyboardMapping }: VirtualPianoProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [pressedKeys, setPressedKeys] = useState<Set<number>>(new Set())
   const [mousePressed, setMousePressed] = useState(false)
@@ -72,7 +73,7 @@ export function VirtualPiano({ activeNotes, onKeyPress, onKeyRelease, keyboardMa
     for (let i = 0; i < PIANO_KEYS; i++) {
       const pitch = LOWEST_KEY + i
       if (!isBlackKey(pitch)) {
-        const isPressed = pressedKeys.has(pitch)
+        const isPressed = pressedKeys.has(pitch) || userPressedKeys.has(pitch)
         const isActive = activeNotes.has(pitch)
         const noteName = getNoteNameFromPitch(pitch)
 
@@ -124,7 +125,7 @@ export function VirtualPiano({ activeNotes, onKeyPress, onKeyRelease, keyboardMa
       if (!isBlackKey(pitch)) {
         whiteKeyIndex++
       } else {
-        const isPressed = pressedKeys.has(pitch)
+        const isPressed = pressedKeys.has(pitch) || userPressedKeys.has(pitch)
         const isActive = activeNotes.has(pitch)
         const leftPosition = ((whiteKeyIndex - 0.35) / whiteKeyCount) * 100
 

@@ -33,6 +33,7 @@ export function MidiPlayer() {
   const [currentTime, setCurrentTime] = useState(0)
   const [activeNotes, setActiveNotes] = useState<Set<number>>(new Set())
   const [userPressedKeys, setUserPressedKeys] = useState<Set<number>>(new Set())
+  const [activeNoteForPitch, setActiveNoteForPitch] = useState<Map<number, string>>(new Map())
   const [speed, setSpeed] = useState(1)
   const [volume, setVolume] = useState(0.8)
   const [pixelsPerSecond, setPixelsPerSecond] = useState(150)
@@ -283,6 +284,7 @@ export function MidiPlayer() {
         const newTime = prev + delta * speed
 
         const newActive = new Set<number>()
+        const newActiveMap = new Map<number, string>()
         midiData.notes.forEach((note, index) => {
           const noteKey = `${note.pitch}-${note.startTime}`
           const noteId = `${note.pitch}-${note.startTime}-${index}`
@@ -290,6 +292,10 @@ export function MidiPlayer() {
 
           if (newTime >= note.startTime && newTime < noteEnd) {
             newActive.add(note.pitch)
+            // register first active occurrence for this pitch (used to highlight only first falling note)
+            if (mode === "play" && !newActiveMap.has(note.pitch)) {
+              newActiveMap.set(note.pitch, noteId)
+            }
 
             if (mode === "preview") {
               if (!scheduledNotesRef.current.has(noteKey) && synthRef.current) {
@@ -400,6 +406,7 @@ export function MidiPlayer() {
   const handleSeek = (time: number) => {
     setCurrentTime(time)
     setActiveNotes(new Set())
+    setActiveNoteForPitch(new Map())
     scheduledNotesRef.current.clear()
     if (mode === "play") {
       resetGameState()
@@ -407,6 +414,8 @@ export function MidiPlayer() {
   }
 
   const handleKeyPress = (pitch: number) => {
+    // mark as user pressed (keyboard or mouse)
+    setUserPressedKeys((prev) => new Set([...prev, pitch]))
     if (synthRef.current) {
       Tone.start()
       const freq = midiToFrequency(pitch)
@@ -416,6 +425,11 @@ export function MidiPlayer() {
   }
 
   const handleKeyRelease = (pitch: number) => {
+    setUserPressedKeys((prev) => {
+      const newSet = new Set(prev)
+      newSet.delete(pitch)
+      return newSet
+    })
     if (synthRef.current) {
       const freq = midiToFrequency(pitch)
       synthRef.current.triggerRelease(freq)
@@ -427,6 +441,7 @@ export function MidiPlayer() {
     setIsPlaying(false)
     setCurrentTime(0)
     setActiveNotes(new Set())
+    setActiveNoteForPitch(new Map())
     scheduledNotesRef.current.clear()
     resetGameState()
   }
@@ -573,6 +588,7 @@ export function MidiPlayer() {
           isPlaying={isPlaying}
           activeNotes={activeNotes}
           userPressedKeys={userPressedKeys}
+          activeNoteForPitch={activeNoteForPitch}
           onKeyPress={handleKeyPress}
           onKeyRelease={handleKeyRelease}
           pixelsPerSecond={pixelsPerSecond}

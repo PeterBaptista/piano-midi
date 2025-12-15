@@ -12,6 +12,7 @@ interface PianoRollCanvasProps {
   isPlaying: boolean
   activeNotes: Set<number>
   userPressedKeys: Set<number>
+  activeNoteForPitch?: Map<number, string>
   onKeyPress: (pitch: number) => void
   onKeyRelease: (pitch: number) => void
   pixelsPerSecond: number
@@ -33,6 +34,7 @@ export function PianoRollCanvas({
   isPlaying,
   activeNotes,
   userPressedKeys,
+  activeNoteForPitch,
   onKeyPress,
   onKeyRelease,
   pixelsPerSecond,
@@ -119,6 +121,7 @@ export function PianoRollCanvas({
     isPlaying,
     activeNotes,
     userPressedKeys,
+    activeNoteForPitch,
     pressedKeys,
     whiteKeyCount,
     dimensions,
@@ -285,7 +288,8 @@ export function PianoRollCanvas({
       }
 
       const isBlack = isBlackKey(note.pitch)
-      const isActive = activeNotes.has(note.pitch)
+      const isActivePitch = activeNotes.has(note.pitch)
+      const isActiveOccurrence = activeNoteForPitch?.get(note.pitch) === noteId
       const isPassed = note.startTime + note.duration < currentTime
       const wasHit = hitNotes.has(noteId)
       const wasMissed = missedNotes.has(noteId)
@@ -306,14 +310,15 @@ export function PianoRollCanvas({
         if (wasHit) ctx.fillStyle = "rgba(74, 222, 128, 0.3)"
         else if (wasMissed) ctx.fillStyle = "rgba(248, 113, 113, 0.4)"
         else if (isPassed) ctx.fillStyle = "rgba(248, 113, 113, 0.6)"
-        else if (isActive) {
-           ctx.fillStyle = "rgba(250, 204, 21, 1)"
-           ctx.shadowColor = "rgba(250, 204, 21, 0.6)"
-           ctx.shadowBlur = 15
+        // only highlight the first active occurrence for this pitch
+        else if (isActiveOccurrence) {
+          ctx.fillStyle = "rgba(250, 204, 21, 1)"
+          ctx.shadowColor = "rgba(250, 204, 21, 0.6)"
+          ctx.shadowBlur = 15
         } else ctx.fillStyle = "rgba(96, 165, 250, 0.85)"
       } else {
         if (isPassed) ctx.fillStyle = "rgba(100, 116, 139, 0.4)"
-        else if (isActive) {
+        else if (isActivePitch) {
           ctx.fillStyle = "rgba(74, 222, 128, 1)"
           ctx.shadowColor = "rgba(74, 222, 128, 0.6)"
           ctx.shadowBlur = 15
@@ -354,9 +359,16 @@ export function PianoRollCanvas({
       const pitch = LOWEST_KEY + i
       if (!isBlackKey(pitch)) {
         const keyX = x + whiteKeyIndex * keyWidth
-        const isActive = activeNotes.has(pitch) || userPressedKeys.has(pitch) || pressedKeys.has(pitch)
-        
-        if (isActive) {
+        const isPressed = userPressedKeys.has(pitch) || pressedKeys.has(pitch)
+        const isActivePitchKey = activeNotes.has(pitch)
+
+        if (isPressed) {
+          // pressed by user (keyboard/midi/mouse) - distinct color
+          const gradient = ctx.createLinearGradient(keyX, y, keyX, y + height)
+          gradient.addColorStop(0, "rgba(100, 180, 255, 0.9)")
+          gradient.addColorStop(1, "rgba(220, 240, 255, 0.95)")
+          ctx.fillStyle = gradient
+        } else if (isActivePitchKey) {
           const gradient = ctx.createLinearGradient(keyX, y, keyX, y + height)
           gradient.addColorStop(0, mode === "play" ? "rgba(250, 204, 21, 0.6)" : "rgba(74, 222, 128, 0.6)")
           gradient.addColorStop(0.3, mode === "play" ? "rgba(250, 204, 21, 0.3)" : "rgba(74, 222, 128, 0.3)")
@@ -393,9 +405,15 @@ export function PianoRollCanvas({
         const keyX = x + (whiteKeyIndex - 0.35) * keyWidth
         const blackKeyWidth = keyWidth * 0.7
         const blackKeyHeight = height * 0.6
-        const isActive = activeNotes.has(pitch) || userPressedKeys.has(pitch) || pressedKeys.has(pitch)
+        const isPressed = userPressedKeys.has(pitch) || pressedKeys.has(pitch)
+        const isActivePitchKey = activeNotes.has(pitch)
 
-        if (isActive) {
+        if (isPressed) {
+          const gradient = ctx.createLinearGradient(keyX, y, keyX, y + blackKeyHeight)
+          gradient.addColorStop(0, "rgba(80, 170, 255, 0.95)")
+          gradient.addColorStop(1, "rgba(20, 30, 50, 0.95)")
+          ctx.fillStyle = gradient
+        } else if (isActivePitchKey) {
           const gradient = ctx.createLinearGradient(keyX, y, keyX, y + blackKeyHeight)
           gradient.addColorStop(0, mode === "play" ? "rgba(250, 204, 21, 0.9)" : "rgba(34, 197, 94, 0.9)")
           gradient.addColorStop(1, "rgba(15, 23, 42, 0.95)")
