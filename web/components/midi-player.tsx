@@ -28,6 +28,7 @@ import { LogOut, User as UserIcon, Youtube } from "lucide-react"
 import { YouTubeModal } from "@/components/youtube-modal"
 
 export function MidiPlayer() {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL!
   const [midiData, setMidiData] = useState<ParsedMidi | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -60,7 +61,7 @@ export function MidiPlayer() {
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [isYoutubeModalOpen, setIsYoutubeModalOpen] = useState(false)
-  const { user, logout, isAuthenticated } = useAuth()
+  const { user, logout, isAuthenticated, token } = useAuth()
 
   useEffect(() => {
     currentTimeRef.current = currentTime
@@ -254,6 +255,37 @@ export function MidiPlayer() {
     scheduledNotesRef.current.clear()
     resetGameState()
   }, [])
+
+  // If the page was opened with a job query param, fetch the MIDI and import it
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const jobIdParam = params.get("job")
+    if (!jobIdParam) return
+    // attempt automatic import if token available
+    if (!token) return
+
+    (async () => {
+      try {
+        const resMidi = await fetch(`${API_URL}/jobs/${jobIdParam}/midi`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!resMidi.ok) {
+          console.error("Falha ao obter MIDI via job param", await resMidi.text())
+          return
+        }
+        const blob = await resMidi.blob()
+        const filename = resMidi.headers.get("Content-Disposition")?.split("filename=")?.[1] || `youtube_${jobIdParam}.mid`
+        const file = new File([blob], filename.replace(/"/g, ""), { type: "audio/midi" })
+        handleFileLoad(file)
+        // remove job param from url
+        params.delete("job")
+        const newUrl = window.location.pathname + (params.toString() ? `?${params.toString()}` : "")
+        window.history.replaceState({}, "", newUrl)
+      } catch (e) {
+        console.error("Erro ao importar MIDI do job param:", e)
+      }
+    })()
+  }, [token, handleFileLoad])
 
   const resetGameState = useCallback(() => {
     setGameScore({
