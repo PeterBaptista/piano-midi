@@ -8,13 +8,15 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL!
 interface YouTubeModalProps {
   isOpen: boolean
   onClose: () => void
+  onImportMidi?: (file: File) => void
 }
 
-export function YouTubeModal({ isOpen, onClose }: YouTubeModalProps) {
+export function YouTubeModal({ isOpen, onClose, onImportMidi }: YouTubeModalProps) {
   const [url, setUrl] = useState("")
   const [status, setStatus] = useState<"idle" | "processing" | "ready" | "error">("idle")
   const [statusMessage, setStatusMessage] = useState("")
   const [jobId, setJobId] = useState<string | null>(null)
+  const [imported, setImported] = useState(false)
   const { token, isAuthenticated } = useAuth()
 
   if (!isOpen) return null
@@ -64,10 +66,32 @@ export function YouTubeModal({ isOpen, onClose }: YouTubeModalProps) {
         const data = await res.json()
 
         if (data.status === "SUCCEEDED") {
-          clearInterval(interval)
-          setStatus("ready")
-          setStatusMessage("Processamento concluído! Seu MIDI de piano está pronto.")
-        } else if (data.status === "FAILED") {
+            // não encerrar o polling imediatamente — tentamos obter o .mid
+            setStatusMessage("Processamento concluído (stems prontos). Aguardando geração/extração do MIDI do piano...")
+
+            try {
+              const res = await fetch(`${API_URL}/jobs/${id}/midi`, {
+                headers: { "Authorization": `Bearer ${token}` }
+              })
+
+              if (res.ok) {
+                const blob = await res.blob()
+                const filename = res.headers.get('Content-Disposition')?.split('filename=')?.[1] || `youtube_${id}.mid`
+                const file = new File([blob], filename.replace(/"/g, ''), { type: 'audio/midi' })
+                if (onImportMidi) onImportMidi(file)
+                setImported(true)
+                setStatus("ready")
+                setStatusMessage('MIDI do piano importado. Você pode fechar este modal ou ir para o teclado.')
+                clearInterval(interval)
+              } else {
+                // MIDI ainda não disponível, manter polling e logs
+                setStatusMessage('Stems prontos — aguardando a extração do MIDI do piano...')
+              }
+            } catch (e) {
+              console.error('Erro ao baixar o MIDI do job:', e)
+              setStatusMessage('Erro ao baixar o MIDI do job. Continuando tentativa...')
+            }
+          } else if (data.status === "FAILED") {
           clearInterval(interval)
           setStatus("error")
           setStatusMessage("Falha no processamento da MusicAI.")
@@ -82,32 +106,8 @@ export function YouTubeModal({ isOpen, onClose }: YouTubeModalProps) {
     }, 5000)
   }
 
-  const downloadFile = () => {
-    if (jobId && token) {
-      handleDownloadBlob(jobId)
-    }
-  }
-
-  const handleDownloadBlob = async (id: string) => {
-      setStatusMessage("Baixando arquivo...")
-      try {
-        const res = await fetch(`${API_URL}/jobs/${id}`, {
-            headers: { "Authorization": `Bearer ${token}` }
-        })
-        const blob = await res.blob()
-        const downloadUrl = window.URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.href = downloadUrl
-        a.download = `piano_midi_${id}.zip`
-        document.body.appendChild(a)
-        a.click()
-        a.remove()
-        onClose()
-      } catch (err) {
-        setStatus("error")
-        setStatusMessage("Erro ao baixar o arquivo final.")
-      }
-  }
+  // NOTE: removed manual download flow — modal now shows logs and lets user
+  // close or go to piano. The UI no longer exposes a 'Baixar MIDI' button.
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
@@ -149,9 +149,10 @@ export function YouTubeModal({ isOpen, onClose }: YouTubeModalProps) {
 
           <div className="flex justify-end gap-3 mt-4">
              {status === 'ready' ? (
-                <Button onClick={downloadFile} className="bg-green-600 hover:bg-green-500 w-full">
-                   <Download className="mr-2 h-4 w-4" /> Baixar MIDI
-                </Button>
+                <div className="flex gap-2 w-full">
+                  <Button onClick={onClose} className="bg-slate-700 hover:bg-slate-600 w-1/2">Fechar</Button>
+                  <Button onClick={() => { window.location.href = `${window.location.pathname.split('?')[0]}` }} className="bg-blue-600 hover:bg-blue-500 w-1/2">Ir para o teclado</Button>
+                </div>
              ) : (
                 <Button 
                   onClick={startProcessing} 

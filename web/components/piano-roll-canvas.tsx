@@ -330,6 +330,29 @@ export function PianoRollCanvas({
       ctx.roundRect(noteX, noteY, noteWidth, noteHeight, radius)
       ctx.fill()
       ctx.shadowBlur = 0
+
+      // Note label: show the note name while the note is falling
+      try {
+        ctx.save()
+        const noteName = getNoteNameFromPitch(note.pitch)
+        const fontSize = Math.max(10, Math.min(14, Math.floor(noteWidth / 5)))
+        ctx.font = `bold ${fontSize}px sans-serif`
+        ctx.textAlign = "center"
+        ctx.textBaseline = "top"
+        // text shadow for contrast
+        ctx.shadowColor = "rgba(0,0,0,0.85)"
+        ctx.shadowBlur = 6
+        ctx.fillStyle = "rgba(255,255,255,0.95)"
+        const textX = noteX + noteWidth / 2
+        const textY = noteY + 4
+        // Only draw label if note is reasonably visible
+        if (noteY < height && noteY + noteHeight > visibleTop) {
+          ctx.fillText(noteName, textX, textY)
+        }
+        ctx.restore()
+      } catch (e) {
+        // ignore drawing errors
+      }
     })
 
     // Hit Line
