@@ -482,7 +482,15 @@ def process_youtube():
                 gen_midi_path = os.path.join(paths['dir'], os.path.basename(midi_out)) if midi_out else None
                 if gen_midi_path and os.path.exists(gen_midi_path):
                     try:
+                        # replace canonical midi file with piano-generated midi
                         os.replace(gen_midi_path, paths['midi'])
+                        # remove any leftover piano-specific midi to avoid duplicates
+                        piano_specific = os.path.join(paths['dir'], f"{video_id}_piano.mid")
+                        if os.path.exists(piano_specific) and piano_specific != paths['midi']:
+                            try:
+                                os.remove(piano_specific)
+                            except Exception:
+                                pass
                     except Exception:
                         pass
                 return jsonify({"message": "MIDI gerado localmente", "job_id": job_id, "status": "SUCCEEDED"}), 200
@@ -603,6 +611,13 @@ def get_job_status_or_download(job_id):
                     with open(cache_mid_file, "wb") as f:
                         f.write(midi_bytes)
                     print(f"[INFO] MIDI salvo em cache: {cache_mid_file}")
+                    # cleanup piano-specific midi files to avoid duplicates
+                    piano_specific = os.path.join(paths['dir'], f"{vid}_piano.mid")
+                    if os.path.exists(piano_specific) and piano_specific != cache_mid_file:
+                        try:
+                            os.remove(piano_specific)
+                        except Exception:
+                            pass
             except Exception as e:
                 print(f"[WARN] Não foi possível gravar MIDI em cache: {e}")
 
@@ -670,6 +685,13 @@ def get_job_midi(job_id):
                 with open(cache_mid_file, "wb") as f:
                     f.write(midi_bytes)
                 print(f"[INFO] MIDI salvo em cache: {cache_mid_file}")
+                # remove any piano-specific midi to avoid keeping duplicates
+                piano_specific = os.path.join(paths['dir'], f"{vid}_piano.mid")
+                if os.path.exists(piano_specific) and piano_specific != cache_mid_file:
+                    try:
+                        os.remove(piano_specific)
+                    except Exception:
+                        pass
         except Exception as e:
             print(f"[WARN] Não foi possível gravar MIDI em cache: {e}")
 
