@@ -66,11 +66,9 @@ export function YouTubeModal({ isOpen, onClose, onImportMidi }: YouTubeModalProp
         const data = await res.json()
 
         if (data.status === "SUCCEEDED") {
-            clearInterval(interval)
-            setStatus("ready")
-            setStatusMessage("Processamento concluído! Importando MIDI para o piano...")
+            // não encerrar o polling imediatamente — tentamos obter o .mid
+            setStatusMessage("Processamento concluído (stems prontos). Aguardando geração/extração do MIDI do piano...")
 
-            // Tenta buscar o MIDI do job e importar diretamente para o player
             try {
               const res = await fetch(`${API_URL}/jobs/${id}/midi`, {
                 headers: { "Authorization": `Bearer ${token}` }
@@ -80,25 +78,18 @@ export function YouTubeModal({ isOpen, onClose, onImportMidi }: YouTubeModalProp
                 const blob = await res.blob()
                 const filename = res.headers.get('Content-Disposition')?.split('filename=')?.[1] || `youtube_${id}.mid`
                 const file = new File([blob], filename.replace(/"/g, ''), { type: 'audio/midi' })
-                // importa para o player via prop (mantém modal aberto e logs visíveis)
                 if (onImportMidi) onImportMidi(file)
                 setImported(true)
-
-                // atualiza a URL com o job param sem navegar (para compartilhamento)
-                try {
-                  const target = `${window.location.pathname.split('?')[0]}?job=${id}`
-                  window.history.replaceState({}, '', target)
-                } catch (e) {
-                  console.warn('Não foi possível atualizar a URL com job param:', e)
-                }
-
-                setStatusMessage('MIDI importado para o piano. Você pode fechar este modal.')
+                setStatus("ready")
+                setStatusMessage('MIDI do piano importado. Você pode fechar este modal ou ir para o teclado.')
+                clearInterval(interval)
               } else {
-                setStatusMessage('Processou, mas falha ao baixar o MIDI automaticamente.')
+                // MIDI ainda não disponível, manter polling e logs
+                setStatusMessage('Stems prontos — aguardando a extração do MIDI do piano...')
               }
             } catch (e) {
               console.error('Erro ao baixar o MIDI do job:', e)
-              setStatusMessage('Erro ao baixar o MIDI do job.')
+              setStatusMessage('Erro ao baixar o MIDI do job. Continuando tentativa...')
             }
           } else if (data.status === "FAILED") {
           clearInterval(interval)
