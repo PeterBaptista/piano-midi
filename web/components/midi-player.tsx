@@ -521,7 +521,14 @@ export function MidiPlayer() {
         </div>
         
         <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
-        <YouTubeModal isOpen={isYoutubeModalOpen} onClose={() => setIsYoutubeModalOpen(false)} />
+        <YouTubeModal
+          isOpen={isYoutubeModalOpen}
+          onClose={() => setIsYoutubeModalOpen(false)}
+          onImportMidi={(file: File) => {
+            // Reaproveita o handler de importação de arquivo já existente
+            handleFileLoad(file)
+          }}
+        />
       </div>
     )
   }

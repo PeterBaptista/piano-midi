@@ -8,6 +8,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL!
 interface YouTubeModalProps {
   isOpen: boolean
   onClose: () => void
+  onImportMidi?: (file: File) => void
 }
 
 export function YouTubeModal({ isOpen, onClose }: YouTubeModalProps) {
@@ -67,6 +68,25 @@ export function YouTubeModal({ isOpen, onClose }: YouTubeModalProps) {
           clearInterval(interval)
           setStatus("ready")
           setStatusMessage("Processamento concluído! Seu MIDI de piano está pronto.")
+          // Ao concluir, buscar o MIDI e importar direto para o piano (se callback fornecida)
+          if (onImportMidi) {
+            try {
+              const resMidi = await fetch(`${API_URL}/jobs/${id}/midi`, {
+                headers: { "Authorization": `Bearer ${token}` }
+              })
+
+              if (!resMidi.ok) throw new Error("Falha ao obter MIDI")
+
+              const blob = await resMidi.blob()
+              const filename = resMidi.headers.get('Content-Disposition')?.split('filename=')?.[1] || `youtube_${id}.mid`
+              const file = new File([blob], filename.replace(/"/g, ''), { type: 'audio/midi' })
+              onImportMidi(file)
+              onClose()
+            } catch (e) {
+              // se falhar, apenas deixe o usuário baixar manualmente
+              console.error('Erro ao importar MIDI automaticamente:', e)
+            }
+          }
         } else if (data.status === "FAILED") {
           clearInterval(interval)
           setStatus("error")

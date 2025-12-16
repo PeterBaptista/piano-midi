@@ -291,6 +291,43 @@ def get_job_status_or_download(job_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route("/jobs/<job_id>/midi", methods=["GET"]) 
+@jwt_required()
+def get_job_midi(job_id):
+    """
+    Retorna o primeiro arquivo MIDI gerado pelo job da MusicAI como conteúdo bruto.
+    Usado para importar o MIDI diretamente na UI sem precisar baixar o ZIP manualmente.
+    """
+    try:
+        job_result = music_ai.get_job(job_id)
+        remote_status = job_result.get("status")
+
+        if remote_status != "SUCCEEDED":
+            return jsonify({"error": "Job ainda não concluído"}), 400
+
+        # Reutiliza a função que gera o ZIP com os MIDIs e stems
+        memory_zip = create_zip_with_midi(job_result)
+
+        # Abre o ZIP em memória e extrai o primeiro .mid
+        with zipfile.ZipFile(memory_zip) as z:
+            midi_files = [n for n in z.namelist() if n.lower().endswith('.mid')]
+            if not midi_files:
+                return jsonify({"error": "Nenhum arquivo MIDI encontrado nos resultados"}), 404
+
+            first_midi_name = midi_files[0]
+            midi_bytes = z.read(first_midi_name)
+
+        return send_file(
+            io.BytesIO(midi_bytes),
+            mimetype='audio/midi',
+            as_attachment=False,
+            download_name=first_midi_name
+        )
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/workflows", methods=["GET"])
 def list_workflows():
     try:
